@@ -1377,8 +1377,6 @@ viosnd_pcm_stream_configure(struct viosnd_pcm *pcm,
 	u32 rates;
 	u32 sample_size_min = 0;
 	u32 sample_size_max = 0;
-	unsigned int buffer_size_min;
-	unsigned int buffer_size_max;
 	unsigned int page_order;
 
 	stream = devm_kzalloc(dev, sizeof(*stream), GFP_KERNEL);
@@ -1439,22 +1437,18 @@ viosnd_pcm_stream_configure(struct viosnd_pcm *pcm,
 		return ERR_PTR(-EINVAL);
 	}
 
-	buffer_size_min =
-		(sample_size_min * desc->channels_min * stream->hw.rate_min);
-	buffer_size_min /= 2;
-	buffer_size_max =
-		(sample_size_max * desc->channels_max * stream->hw.rate_max);
-	buffer_size_max /= 2;
-
+	stream->hw.period_bytes_min =
+		(sample_size_min * desc->channels_min * desc->period_size_min);
+	stream->hw.period_bytes_max =
+		(sample_size_max * desc->channels_max * desc->period_size_max);
 	stream->hw.channels_min = desc->channels_min;
 	stream->hw.channels_max = desc->channels_max;
-	stream->hw.buffer_bytes_max = buffer_size_max;
-	stream->hw.periods_min = 4;
-	stream->hw.periods_max = 4;
-	stream->hw.period_bytes_min = buffer_size_min / 4;
-	stream->hw.period_bytes_max = buffer_size_max / 4;
+	stream->hw.periods_min = 2;
+	stream->hw.periods_max = 16;
+	stream->hw.buffer_bytes_max =
+		stream->hw.periods_max * stream->hw.period_bytes_max;
 
-	page_order = get_order(buffer_size_max);
+	page_order = get_order(stream->hw.buffer_bytes_max);
 
 	stream->data = (void *)devm_get_free_pages(dev, GFP_KERNEL, page_order);
 	if (!stream->data)
