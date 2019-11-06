@@ -579,13 +579,24 @@ static void viosnd_pcm_copy_to_shadow(struct viosnd_pcm_stream *stream,
 	}
 }
 
+static void viosnd_virtqueue_kick(struct viosnd_pcm_stream *stream)
+{
+	struct viosnd_pcm *pcm = stream->pcm;
+	unsigned long flags;
+	bool notify;
+
+	spin_lock_irqsave(&pcm->lock, flags);
+	notify = virtqueue_kick_prepare(pcm->queue);
+	spin_unlock_irqrestore(&pcm->lock, flags);
+
+	if (notify)
+		virtqueue_notify(pcm->queue);
+}
+
 static void viosnd_pcm_xfer_write(struct viosnd_pcm_stream *stream,
 				  snd_pcm_uframes_t frames, gfp_t gfp)
 {
-	struct viosnd_pcm *pcm = stream->pcm;
 	struct snd_pcm_runtime *runtime = stream->substream->runtime;
-	bool notify = false;
-	unsigned long flags;
 
 	while (frames) {
 		snd_pcm_uframes_t position =
@@ -608,23 +619,15 @@ static void viosnd_pcm_xfer_write(struct viosnd_pcm_stream *stream,
 		frames -= count;
 	}
 
-	spin_lock_irqsave(&pcm->lock, flags);
-	notify = virtqueue_kick_prepare(pcm->queue);
-	spin_unlock_irqrestore(&pcm->lock, flags);
-
-	if (notify)
-		virtqueue_notify(pcm->queue);
+	viosnd_virtqueue_kick(stream);
 }
 
 static void viosnd_pcm_xfer_read(struct viosnd_pcm_stream *stream,
 				 snd_pcm_uframes_t frames, gfp_t gfp)
 {
-	struct viosnd_pcm *pcm = stream->pcm;
 	struct snd_pcm_runtime *runtime = stream->substream->runtime;
 	snd_pcm_uframes_t position =
 		stream->hw_ptr.value % runtime->buffer_size;
-	bool notify = false;
-	unsigned long flags;
 
 	while (frames) {
 		snd_pcm_uframes_t count = frames;
@@ -642,12 +645,7 @@ static void viosnd_pcm_xfer_read(struct viosnd_pcm_stream *stream,
 		frames -= count;
 	}
 
-	spin_lock_irqsave(&pcm->lock, flags);
-	notify = virtqueue_kick_prepare(pcm->queue);
-	spin_unlock_irqrestore(&pcm->lock, flags);
-
-	if (notify)
-		virtqueue_notify(pcm->queue);
+	viosnd_virtqueue_kick(stream);
 }
 
 static int viosnd_pcm_stream_fn(void *data)
