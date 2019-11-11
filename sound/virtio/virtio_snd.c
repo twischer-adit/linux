@@ -140,6 +140,7 @@ struct viosnd_pcm_stream {
 	struct viosnd_pcm *pcm;
 
 	struct snd_pcm_hardware hw;
+	struct snd_pcm_hw_constraint_list period_size_list;
 	struct snd_pcm_substream *substream;
 	u8 nchmaps;
 
@@ -851,6 +852,11 @@ static int viosnd_pcm_open(struct snd_pcm_substream *substream)
 
 	substream->runtime->hw = stream->hw;
 
+	if (stream->period_size_list.count > 0)
+		snd_pcm_hw_constraint_list(substream->runtime, 0,
+					   SNDRV_PCM_HW_PARAM_PERIOD_SIZE,
+					   &stream->period_size_list);
+
 	return 0;
 }
 
@@ -1447,6 +1453,20 @@ viosnd_pcm_stream_configure(struct viosnd_pcm *pcm,
 	stream->hw.periods_max = 16;
 	stream->hw.buffer_bytes_max =
 		stream->hw.periods_max * stream->hw.period_bytes_max;
+
+	if (desc->period_size_list_count > 0) {
+		const size_t size = sizeof(desc->period_size_list[0]) *
+				desc->period_size_list_count;
+		unsigned int* const elems = devm_kzalloc(dev, size, GFP_KERNEL);
+
+		if (!elems)
+			return ERR_PTR(-ENOMEM);
+		for (i = 0; i < desc->period_size_list_count; ++i)
+			elems[i] = desc->period_size_list[i];
+
+		stream->period_size_list.count = desc->period_size_list_count;
+		stream->period_size_list.list = elems;
+	}
 
 	page_order = get_order(stream->hw.buffer_bytes_max);
 
